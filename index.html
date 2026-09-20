@@ -826,9 +826,13 @@ function drawPen(g,r,i,t){
 }
 
 /* ---------------- 主渲染 ---------------- */
+// Farm illustration is optional: existing Canvas background remains the fallback.
+const farmArt = new Image();
+farmArt.src = 'assets/art/farm-meadow.svg';
 function render(t){
   ctx.clearRect(0,0,W,H);
-  if(bgc) ctx.drawImage(bgc,0,0,W,H);
+  if(farmArt.complete && farmArt.naturalWidth){ ctx.drawImage(farmArt,0,0,W,H); }
+  else if(bgc) ctx.drawImage(bgc,0,0,W,H);
   for(let i=0;i<N_PENS;i++) if(penRects[i]) drawPen(ctx,penRects[i],i,t);
   // 特效
   for(const f of fx){
