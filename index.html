@@ -398,10 +398,42 @@ function layout(){
 }
 
 /* ---------------- 背景 ---------------- */
+/* 美术资源：手绘农场背景（assets/art/farm-meadow.svg）
+   加载成功后作为主背景，等比裁切铺满；未加载 / 加载失败时自动回落到下面的 Canvas 手绘背景。 */
+const ART = {
+  meadow:{src:'assets/art/farm-meadow.svg', img:null, ok:false, tried:false},
+};
+for(const k in ART){
+  const a=ART[k], img=new Image();
+  a.img=img;
+  img.onload=()=>{ a.ok=true; buildBG(); };
+  img.onerror=()=>{ a.ok=false; };
+  img.src=a.src;
+}
+
 function buildBG(){
   bgc=document.createElement('canvas');
   bgc.width=Math.round(W*DPR); bgc.height=Math.round(H*DPR);
   const g=bgc.getContext('2d'); g.setTransform(DPR,0,0,DPR,0,0);
+  const art=ART.meadow.ok?ART.meadow.img:null;
+  if(art && art.naturalWidth){ drawArtCover(g,art); return; }
+  drawHandMeadow(g);
+}
+
+/* 等比铺满：不拉伸变形，多出来的部分从中心裁掉 */
+function drawArtCover(g,img){
+  const iw=img.naturalWidth||900, ih=img.naturalHeight||600;
+  const sc=Math.max(W/iw,H/ih), dw=iw*sc, dh=ih*sc;
+  g.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh);
+  // 柔和暖色叠加，让插画和整体粉奶油色调统一
+  const wash=g.createLinearGradient(0,0,0,H);
+  wash.addColorStop(0,'rgba(255,248,236,.16)');
+  wash.addColorStop(.45,'rgba(255,250,240,.05)');
+  wash.addColorStop(1,'rgba(255,241,222,.20)');
+  g.fillStyle=wash; g.fillRect(0,0,W,H);
+}
+
+function drawHandMeadow(g){
   const sky=g.createLinearGradient(0,0,0,H);
   sky.addColorStop(0,'#FFF3E0'); sky.addColorStop(.45,'#FFF8EC'); sky.addColorStop(1,'#FBF0DC');
   g.fillStyle=sky; g.fillRect(0,0,W,H);
@@ -826,13 +858,10 @@ function drawPen(g,r,i,t){
 }
 
 /* ---------------- 主渲染 ---------------- */
-// Farm illustration is optional: existing Canvas background remains the fallback.
-const farmArt = new Image();
-farmArt.src = 'assets/art/farm-meadow.svg';
 function render(t){
   ctx.clearRect(0,0,W,H);
-  if(farmArt.complete && farmArt.naturalWidth){ ctx.drawImage(farmArt,0,0,W,H); }
-  else if(bgc) ctx.drawImage(bgc,0,0,W,H);
+  // bgc 里已经合成了美术资源（或手绘回落背景），这里只做一次贴图，保证帧率
+  if(bgc) ctx.drawImage(bgc,0,0,W,H);
   for(let i=0;i<N_PENS;i++) if(penRects[i]) drawPen(ctx,penRects[i],i,t);
   // 特效
   for(const f of fx){
