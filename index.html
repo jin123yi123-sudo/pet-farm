@@ -100,6 +100,11 @@ body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sa
 .empty{text-align:center;color:#C0AE9F;font-size:12px;font-weight:700;padding:18px 0}
 .hint{font-size:11px;font-weight:700;color:#B39C8E;line-height:1.6}
 .pv{width:60px;height:52px;display:block;margin:0 auto}
+/* 美术资源图标 */
+.ico{width:16px;height:16px;vertical-align:-3px;display:inline-block;pointer-events:none}
+.ico.sm{width:14px;height:14px;vertical-align:-2px}
+.ico.lg{width:34px;height:34px;vertical-align:middle}
+.big{height:40px;display:flex;align-items:center;justify-content:center;margin-bottom:3px}
 .chipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:7px}
 .chip{background:#fff;border:2px solid #F5E9D8;border-radius:14px;padding:5px 3px;text-align:center}
 .chip.lock{background:#F7F2EC}
@@ -401,15 +406,46 @@ function layout(){
 /* 美术资源：手绘农场背景（assets/art/farm-meadow.svg）
    加载成功后作为主背景，等比裁切铺满；未加载 / 加载失败时自动回落到下面的 Canvas 手绘背景。 */
 const ART = {
-  meadow:{src:'assets/art/farm-meadow.svg', img:null, ok:false, tried:false},
+  meadow:{src:'assets/art/farm-meadow.svg', img:null, ok:false},
+  ground:{}, food:{}, item:{},   // 按 key 懒加载
 };
-for(const k in ART){
-  const a=ART[k], img=new Image();
+/* 每个物种对应的围栏地面贴图 */
+const GROUND_OF = {dog:'wood',cat:'cushion',hamster:'chips',guineapig:'haybed',capybara:'onsen',
+  duck:'water',pony:'pasture',squirrel:'stump',alpaca:'plateau',pig:'mud'};
+
+function loadArt(a){
+  const img=new Image();
   a.img=img;
-  img.onload=()=>{ a.ok=true; buildBG(); };
+  img.onload=()=>{ a.ok=true; a.pat=null; buildBG(); };
   img.onerror=()=>{ a.ok=false; };
   img.src=a.src;
 }
+loadArt(ART.meadow);
+for(const k in GROUND_OF) ART.ground[k]={src:'assets/art/ground/'+GROUND_OF[k]+'.svg',img:null,ok:false,pat:null};
+for(const k in FOODS) ART.food[k]={src:'assets/art/food/'+k+'.svg',img:null,ok:false};
+for(const k in ITEMS) ART.item[k]={src:'assets/art/item/'+k+'.svg',img:null,ok:false};
+for(const k in ART.ground) loadArt(ART.ground[k]);
+for(const k in ART.food) loadArt(ART.food[k]);
+for(const k in ART.item) loadArt(ART.item[k]);
+
+/* 地面贴图 -> 平铺图案（先缩到 64px 离屏，避免每帧重复栅格化 SVG） */
+function groundPattern(species){
+  const a=ART.ground[species];
+  if(!a||!a.ok||!a.img) return null;
+  if(!a.pat){
+    const c=document.createElement('canvas'); c.width=c.height=64;
+    const g=c.getContext('2d');
+    try{ g.drawImage(a.img,0,0,64,64); a.pat=ctx.createPattern(c,'repeat'); }catch(e){ return null; }
+  }
+  return a.pat;
+}
+/* DOM 图标：优先用美术资源，缺失时回落到 emoji */
+function ico(kind,key,emoji,cls){
+  const a=ART[kind]&&ART[kind][key];
+  if(!a) return emoji;
+  return '<img class="ico '+(cls||'')+'" src="'+a.src+'" alt="" onerror="icoFb(this,\''+emoji+'\')">';
+}
+window.icoFb=function(el,e){ try{ el.outerHTML=e; }catch(x){ el.style.display='none'; } };
 
 function buildBG(){
   bgc=document.createElement('canvas');
@@ -782,16 +818,23 @@ function drawPen(g,r,i,t){
   const pen=state.pens[i];
   const bio=pen.animal?SPECIES[pen.animal.species].biome:{g:'#EAF3D9',s:'#DBEAC5'};
   const sel2=sel===i;
-  // 地面
+  // 地面：优先用物种对应的美术贴图，没有就回落手绘色块
+  const pat=pen.animal?groundPattern(pen.animal.species):null;
   g.save();
   rr(g,r.x,r.y+3,r.w,r.h-3,20); g.fillStyle=bio.g; g.fill();
   g.clip();
-  g.globalAlpha=.85;
-  for(let k=0;k<9;k++){
-    const x=r.x+((k*37+i*13)%r.w), y=r.y+8+((k*53+i*29)%(r.h-16));
-    ell(g,x,y,r.w*.055,r.w*.03,bio.s);
+  if(pat){
+    g.globalAlpha=.92; g.fillStyle=pat; g.fillRect(r.x,r.y,r.w,r.h); g.globalAlpha=1;
+    g.fillStyle='rgba(255,255,255,.16)'; rr(g,r.x,r.y+3,r.w,(r.h-3)*.45,20); g.fill();
+  }else{
+    g.globalAlpha=.85;
+    for(let k=0;k<9;k++){
+      const x=r.x+((k*37+i*13)%r.w), y=r.y+8+((k*53+i*29)%(r.h-16));
+      ell(g,x,y,r.w*.055,r.w*.03,bio.s);
+    }
+    g.globalAlpha=1;
   }
-  g.globalAlpha=1; g.restore();
+  g.restore();
   // 栅栏（后）
   rr(g,r.x,r.y+3,r.w,r.h-3,20); g.strokeStyle='#D8B98C'; g.lineWidth=6; g.stroke();
   rr(g,r.x,r.y+3,r.w,r.h-3,20); g.strokeStyle='rgba(255,255,255,.5)'; g.lineWidth=2; g.stroke();
@@ -831,9 +874,15 @@ function drawPen(g,r,i,t){
     if(pen.item){
       const ix=r.x+r.w-s*.30, iy=r.y+s*.30+Math.sin(t*3)*3;
       circle(g,ix,iy,s*.24,'rgba(255,255,255,.95)');
-      g.font=(s*.24)+'px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
-      g.fillText(ITEMS[pen.item].i, ix, iy+1);
-      g.textBaseline='alphabetic';
+      const ia=ART.item[pen.item];
+      if(ia&&ia.ok&&ia.img){
+        const d=s*.40;
+        try{ g.drawImage(ia.img,ix-d/2,iy-d/2,d,d); }catch(e){}
+      }else{
+        g.font=(s*.24)+'px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+        g.fillText(ITEMS[pen.item].i, ix, iy+1);
+        g.textBaseline='alphabetic';
+      }
     }
     // 自动投喂标记
     if(pen.auto){
@@ -1016,7 +1065,7 @@ function renderPanel(){
   const foods=Object.keys(state.inv.food).filter(k=>state.inv.food[k]>0);
   const fbtn=foods.map(k=>{
     const love=sp.loves.indexOf(k)>=0, hate=sp.hates.indexOf(k)>=0;
-    return '<button data-food="'+k+'" class="'+(love?'love':hate?'no':'')+'">'+FOODS[k].i+FOODS[k].n+'×'+state.inv.food[k]+'</button>';
+    return '<button data-food="'+k+'" class="'+(love?'love':hate?'no':'')+'">'+ico('food',k,FOODS[k].i)+FOODS[k].n+'×'+state.inv.food[k]+'</button>';
   }).join('')||'<span class="hint">背包没有食材，去商店买～</span>';
   p.innerHTML =
     '<div class="top"><span class="nm">'+a.name+'</span><span class="tag">'+br.n+'</span><span class="lv">Lv.'+a.lv+' · '+a.exp+'/'+20+(a.lv-1)*18+'</span></div>'+
@@ -1030,7 +1079,7 @@ function renderPanel(){
       '<button data-p="plan">🍽️ 配餐</button>'+
       '<button class="p" data-p="bye">💌 送别</button>'+
     '</div>'+
-    '<div class="lbl"><span>投喂（'+sp.n+'最爱 '+sp.loves.map(k=>FOODS[k].i+FOODS[k].n).join('、')+'）</span></div>'+
+    '<div class="lbl"><span>投喂（'+sp.n+'最爱 '+sp.loves.map(k=>ico('food',k,FOODS[k].i,'sm')+FOODS[k].n).join('、')+'）</span></div>'+
     '<div class="foodrow">'+fbtn+'</div>';
   p.classList.add('show');
   p.querySelectorAll('[data-food]').forEach(b=>b.onclick=()=>feedPen(pen,b.dataset.food));
@@ -1121,7 +1170,7 @@ function buyFood(k,n){
 function shopFood(body){
   body.innerHTML='<div class="grid">'+Object.keys(FOODS).map(k=>{
     const f=FOODS[k];
-    return '<div class="card" data-f="'+k+'"><div style="font-size:26px">'+f.i+'</div><div class="nm">'+f.n+'</div>'+
+    return '<div class="card" data-f="'+k+'"><div class="big">'+ico('food',k,f.i,'lg')+'</div><div class="nm">'+f.n+'</div>'+
       '<div class="pr">'+f.p+' 🪙</div><div style="font-size:9px;color:#B39C8E;font-weight:700">饱食+'+f.f+(f.hp?' 心情+'+f.hp:'')+'</div>'+
       '<div style="display:flex;gap:3px;margin-top:4px"><button data-buy="'+k+'" data-n="1" style="flex:1;border:none;background:#FFE7C9;border-radius:8px;font-size:10px;font-weight:800;padding:3px 0;cursor:pointer">×1</button>'+
       '<button data-buy="'+k+'" data-n="10" style="flex:1;border:none;background:#FFE7C9;border-radius:8px;font-size:10px;font-weight:800;padding:3px 0;cursor:pointer">×10</button></div></div>';
@@ -1148,13 +1197,13 @@ function openBag(){
   openSheet('🎒 背包',[{k:'f',n:'🍎 食材'},{k:'i',n:'📦 产出'}],(body,cur)=>{
     if(cur==='f'){
       const ks=Object.keys(state.inv.food).filter(k=>state.inv.food[k]>0);
-      body.innerHTML='<div class="grid">'+(ks.length?ks.map(k=>'<div class="card"><div style="font-size:26px">'+FOODS[k].i+'</div><div class="nm">'+FOODS[k].n+'</div><div class="pr">×'+state.inv.food[k]+'</div></div>').join(''):'')+'</div>'+
+      body.innerHTML='<div class="grid">'+(ks.length?ks.map(k=>'<div class="card"><div class="big">'+ico('food',k,FOODS[k].i,'lg')+'</div><div class="nm">'+FOODS[k].n+'</div><div class="pr">×'+state.inv.food[k]+'</div></div>').join(''):'')+'</div>'+
         (ks.length?'':'<div class="empty">还没有食材，去商店买一些吧～</div>')+
         '<div class="sec">小提示</div><div class="hint">在背包里点食材不会直接消耗；打开底部「配餐」可以统一分配，或选中围栏后直接投喂。</div>';
     }else{
       const ks=Object.keys(state.inv.item).filter(k=>state.inv.item[k]>0);
       let total=0; ks.forEach(k=>total+=ITEMS[k].p*state.inv.item[k]);
-      body.innerHTML='<div class="grid">'+(ks.length?ks.map(k=>'<div class="card"><div style="font-size:26px">'+ITEMS[k].i+'</div><div class="nm">'+ITEMS[k].n+'</div><div class="pr">×'+state.inv.item[k]+' · '+ITEMS[k].p+'🪙</div></div>').join(''):'')+'</div>'+
+      body.innerHTML='<div class="grid">'+(ks.length?ks.map(k=>'<div class="card"><div class="big">'+ico('item',k,ITEMS[k].i,'lg')+'</div><div class="nm">'+ITEMS[k].n+'</div><div class="pr">×'+state.inv.item[k]+' · '+ITEMS[k].p+'🪙</div></div>').join(''):'')+'</div>'+
         (ks.length?'':'<div class="empty">还没有收集到产出，照顾好小动物就会掉落哦～</div>')+
         (ks.length?'<div class="row" style="margin-top:10px"><div><div class="t1">全部卖出</div><div class="t2">共 '+total+' 🪙</div></div><span class="sp"></span><button class="g" id="sellAll">卖出</button></div>':'');
       const sa=body.querySelector('#sellAll');
