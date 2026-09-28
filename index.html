@@ -408,6 +408,7 @@ function layout(){
 const ART = {
   meadow:{src:'assets/art/farm-meadow.svg', img:null, ok:false},
   ground:{}, food:{}, item:{},   // 按 key 懒加载
+  pet:{}, face:{},               // 动物全身 / 头部特写，按需懒加载
 };
 /* 每个物种对应的围栏地面贴图 */
 const GROUND_OF = {dog:'wood',cat:'cushion',hamster:'chips',guineapig:'haybed',capybara:'onsen',
@@ -427,6 +428,23 @@ for(const k in ITEMS) ART.item[k]={src:'assets/art/item/'+k+'.svg',img:null,ok:f
 for(const k in ART.ground) loadArt(ART.ground[k]);
 for(const k in ART.food) loadArt(ART.food[k]);
 for(const k in ART.item) loadArt(ART.item[k]);
+
+/* 动物贴图按需懒加载：只为真正出现在场上的品种发请求。
+   文件缺失（404）时 ok=false，drawPet 自动回落到程序化绘制，不会开天窗。 */
+function lazyArt(bucket,path){
+  let a=bucket[path];
+  if(!a){
+    a=bucket[path]={src:'assets/art/'+path+'.svg', img:null, ok:false};
+    const img=new Image();
+    a.img=img;
+    img.onload=()=>{ a.ok=true; };
+    img.onerror=()=>{ a.ok=false; };
+    img.src=a.src;
+  }
+  return a;
+}
+const petArt =(sp,br)=>lazyArt(ART.pet,  'pet/'+sp+'.'+br);
+const faceArt=(sp,br)=>lazyArt(ART.face, 'pet/'+sp+'.'+br+'.face');
 
 /* 地面贴图 -> 平铺图案（先缩到 64px 离屏，避免每帧重复栅格化 SVG） */
 function groundPattern(species){
@@ -570,6 +588,21 @@ function drawPet(g,a,cx,cy,s,t){
   const headR=cfg.hr*s;
   const headCy=bodyCy+cfg.hy*s+bob*.4;
   const hx=cx+jitter;
+
+  /* 贴图优先：assets/art/pet/<物种>.<品种>.svg 存在就直接用，
+     文件缺失时回落到下面的 Canvas 程序化绘制（52 个品种可分批补图，不会开天窗） */
+  const pa=petArt(a.species,a.breed);
+  if(pa&&pa.ok&&pa.img){
+    g.globalAlpha=.16; ell(g,cx,cy+2,s*.40,s*.10,'#5B4A42'); g.globalAlpha=1;
+    const H=s*1.52;                       // 贴图内脚底在 93.3% 处，据此对齐地面
+    g.save();
+    g.translate(cx+jitter, cy+bob*.6-eat);
+    const k=1+idle*.014;                  // 呼吸
+    g.scale(k,k);
+    try{ g.drawImage(pa.img,-H/2,-H*.933,H,H); }catch(e){}
+    g.restore();
+    return;
+  }
 
   // 影子
   g.globalAlpha=.16; ell(g,cx,cy+2,s*.40,s*.10,'#5B4A42'); g.globalAlpha=1;
